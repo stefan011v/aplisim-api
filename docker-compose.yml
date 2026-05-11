@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: aplisim
       POSTGRES_USER: aplisim
-      POSTGRES_PASSWORD: CHANGE_THIS_DB_PASSWORD
+      POSTGRES_PASSWORD: AplisimDb_2026_Stefan011hack.
     volumes:
       - aplisim_postgres_data:/var/lib/postgresql/data
     ports:
