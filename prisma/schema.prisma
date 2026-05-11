@@ -1,0 +1,172 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               Int      @id @default(autoincrement())
+  name             String
+  email            String   @unique
+  passwordHash     String
+  role             String   @default("admin")
+  clientId         Int?
+  clientPortalRole String  @default("member")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  client Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+model Client {
+  id             Int             @id @default(autoincrement())
+  companyName    String
+  contactName    String?
+  email          String?         @unique
+  phone          String?
+  website        String?
+  city           String?
+  status         String          @default("prospect")
+  primaryService String?
+  packageName    String?
+  notes          String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  tickets        Ticket[]
+  leads          Lead[]
+  contacts       ClientContact[]
+  accessRequests AccessRequest[]
+  users          User[]
+}
+
+model ClientContact {
+  id        Int      @id @default(autoincrement())
+  clientId  Int
+  fullName  String
+  email     String?
+  phone     String?
+  role      String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tickets Ticket[]
+}
+
+model Lead {
+  id             Int       @id @default(autoincrement())
+  title          String
+  companyName    String?
+  contactName    String?
+  email          String?
+  phone          String?
+  source         String?
+  status         String    @default("new")
+  notes          String?
+  estimatedValue Float?
+  clientId       Int?
+  convertedAt    DateTime?
+  proposalStatus String?
+  proposalSentAt DateTime?
+  proposalAmount Float?
+  proposalNotes  String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  client Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+model Ticket {
+  id              Int             @id @default(autoincrement())
+  clientId        Int
+  contactId       Int?
+  title           String
+  description     String?
+  status          String          @default("new")
+  priority        String          @default("medium")
+  category        String?         @default("general")
+  assignedTo      String?
+  dueDate         DateTime?
+  firstResponseAt DateTime?
+  resolvedAt      DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  client    Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  contact   ClientContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  messages  TicketMessage[]
+  attachments TicketAttachment[]
+}
+
+model TicketMessage {
+  id         Int      @id @default(autoincrement())
+  ticketId   Int
+  authorName String
+  message    String
+  isInternal Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+}
+
+model TicketAttachment {
+  id           Int      @id @default(autoincrement())
+  ticketId     Int
+  originalName String
+  storedName   String
+  mimeType     String?
+  sizeBytes    Int
+  filePath     String
+  createdAt    DateTime @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+}
+
+model AccessRequest {
+  id         Int      @id @default(autoincrement())
+  fullName   String
+  email      String
+  company    String?
+  message    String?
+  status     String   @default("new")
+  reviewedAt DateTime?
+  reviewedBy String?
+  clientId   Int?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  client Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([clientId])
+}
+
+model AppSetting {
+  id                    Int      @id @default(1)
+  appName               String?  @default("APLISIM Business Console")
+  supportEmail          String?
+  timezone              String   @default("Europe/Belgrade")
+
+  defaultTicketStatus   String   @default("new")
+  defaultTicketPriority String   @default("medium")
+  defaultTicketCategory String   @default("general")
+
+  defaultLeadStatus     String   @default("new")
+  defaultLeadSource     String   @default("website")
+
+  defaultClientStatus   String   @default("prospect")
+  defaultPrimaryService String   @default("web-app-development")
+  defaultPackageName    String?
+
+  notifyOnAccessRequest Boolean  @default(true)
+  notifyOnNewTicket     Boolean  @default(false)
+  notifyOnLeadCreated   Boolean  @default(false)
+
+  updatedAt             DateTime @updatedAt
+}
