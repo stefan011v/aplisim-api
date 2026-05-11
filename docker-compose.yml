@@ -1,0 +1,30 @@
+services:
+  db:
+    image: postgres:16
+    container_name: aplisim-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: aplisim
+      POSTGRES_USER: aplisim
+      POSTGRES_PASSWORD: CHANGE_THIS_DB_PASSWORD
+    volumes:
+      - aplisim_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  api:
+    build: .
+    container_name: aplisim-api
+    restart: unless-stopped
+    depends_on:
+      - db
+    env_file:
+      - .env
+    volumes:
+      - aplisim_uploads:/app/uploads
+    ports:
+      - "127.0.0.1:4000:4000"
+
+volumes:
+  aplisim_postgres_data:
+  aplisim_uploads:

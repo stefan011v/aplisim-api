@@ -5,16 +5,29 @@ const { startImapPolling, stopImapPolling } = require("./services/imap.service")
 
 const PORT = process.env.PORT || 4000;
 
+const shouldStartImap =
+  process.env.IMAP_HOST &&
+  process.env.IMAP_PORT &&
+  process.env.IMAP_USER &&
+  process.env.IMAP_PASS;
+
 const server = app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  startImapPolling();
+
+  if (shouldStartImap) {
+    startImapPolling();
+  } else {
+    console.log("IMAP polling skipped - IMAP env vars not fully configured.");
+  }
 });
 
 async function shutdown(signal) {
   console.log(`${signal} received, shutting down...`);
 
   try {
-    await stopImapPolling();
+    if (shouldStartImap) {
+      await stopImapPolling();
+    }
   } catch (error) {
     console.error("IMAP shutdown error:", error.message);
   }
