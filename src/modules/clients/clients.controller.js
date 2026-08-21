@@ -1,31 +1,81 @@
 const prisma = require("../../config/prisma");
 const bcrypt = require("bcryptjs");
+const {
+  parsePagination,
+  parseSort,
+  parseEnumFilter,
+  buildSearchFilter,
+  combineWhere,
+  buildListResponse,
+} = require("../../utils/listQuery");
+
+const ALLOWED_CLIENT_STATUSES = ["prospect", "active", "paused", "closed"];
+
+const ALLOWED_PRIMARY_SERVICES = [
+  "web-app-development",
+  "help-desk-it-ops",
+  "crm-integrations",
+  "ai-automation",
+];
+
+const CLIENT_SORT_FIELDS = [
+  "createdAt",
+  "updatedAt",
+  "companyName",
+  "status",
+  "city",
+];
+
+const CLIENT_SEARCH_FIELDS = [
+  "companyName",
+  "contactName",
+  "email",
+  "phone",
+  "city",
+  "packageName",
+];
 
 async function getClients(req, res) {
   try {
-    const clients = await prisma.client.findMany({
-      include: {
-        contacts: true,
-        users: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
-            clientPortalRole: true,
-            createdAt: true,
-          },
-          orderBy: {
-            createdAt: "desc",
+    const pagination = parsePagination(req.query);
+
+    const where = combineWhere(
+      buildSearchFilter(req.query.q, CLIENT_SEARCH_FIELDS),
+      parseEnumFilter(req.query.status, ALLOWED_CLIENT_STATUSES)
+        ? { status: req.query.status }
+        : null,
+      parseEnumFilter(req.query.primaryService, ALLOWED_PRIMARY_SERVICES)
+        ? { primaryService: req.query.primaryService }
+        : null
+    );
+
+    const [clients, total] = await Promise.all([
+      prisma.client.findMany({
+        where,
+        skip: pagination.skip,
+        take: pagination.take,
+        include: {
+          contacts: true,
+          users: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+              clientPortalRole: true,
+              createdAt: true,
+            },
+            orderBy: {
+              createdAt: "desc",
+            },
           },
         },
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+        orderBy: parseSort(req.query, CLIENT_SORT_FIELDS),
+      }),
+      prisma.client.count({ where }),
+    ]);
 
-    return res.json(clients);
+    return res.json(buildListResponse(clients, total, pagination));
   } catch (error) {
     console.error("GET_CLIENTS_ERROR:", error);
     return res.status(500).json({
