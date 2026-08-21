@@ -3,6 +3,14 @@ const path = require("path");
 const prisma = require("../../config/prisma");
 const { sendSupportEmail } = require("../../lib/mailer");
 const {
+  parsePagination,
+  parseSort,
+  parseEnumFilter,
+  buildSearchFilter,
+  combineWhere,
+  buildListResponse,
+} = require("../../utils/listQuery");
+const {
   extractTicketIdFromSubject,
   stripTicketTagFromSubject,
 } = require("./tickets.email.utils");
@@ -52,48 +60,81 @@ function safeUnlink(filePath) {
   }
 }
 
+const TICKET_SORT_FIELDS = [
+  "createdAt",
+  "updatedAt",
+  "title",
+  "status",
+  "priority",
+  "dueDate",
+];
+
+const TICKET_SEARCH_FIELDS = ["title", "description", "assignedTo"];
+
 async function getTickets(req, res) {
   try {
-    const where =
+    const pagination = parsePagination(req.query);
+
+    const clientScope =
       req.user.role === "client"
-        ? {
-            clientId: req.user.clientId || -1,
-          }
-        : {};
+        ? { clientId: req.user.clientId || -1 }
+        : null;
 
-    const tickets = await prisma.ticket.findMany({
-      where,
-      include: {
-        client: {
-          select: {
-            id: true,
-            companyName: true,
-          },
-        },
-        contact: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-          },
-        },
-        messages: {
-          select: {
-            id: true,
-          },
-        },
-        attachments: {
-          select: {
-            id: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+    const requestedClientId = Number(req.query.clientId);
 
-    return res.json(tickets);
+    const where = combineWhere(
+      clientScope,
+      buildSearchFilter(req.query.q, TICKET_SEARCH_FIELDS),
+      parseEnumFilter(req.query.status, ALLOWED_TICKET_STATUSES)
+        ? { status: req.query.status }
+        : null,
+      parseEnumFilter(req.query.priority, ALLOWED_TICKET_PRIORITIES)
+        ? { priority: req.query.priority }
+        : null,
+      parseEnumFilter(req.query.category, ALLOWED_TICKET_CATEGORIES)
+        ? { category: req.query.category }
+        : null,
+      !clientScope && Number.isInteger(requestedClientId) && requestedClientId > 0
+        ? { clientId: requestedClientId }
+        : null
+    );
+
+    const [tickets, total] = await Promise.all([
+      prisma.ticket.findMany({
+        where,
+        skip: pagination.skip,
+        take: pagination.take,
+        include: {
+          client: {
+            select: {
+              id: true,
+              companyName: true,
+            },
+          },
+          contact: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+            },
+          },
+          messages: {
+            select: {
+              id: true,
+            },
+          },
+          attachments: {
+            select: {
+              id: true,
+            },
+          },
+        },
+        orderBy: parseSort(req.query, TICKET_SORT_FIELDS),
+      }),
+      prisma.ticket.count({ where }),
+    ]);
+
+    return res.json(buildListResponse(tickets, total, pagination));
   } catch (error) {
     console.error("GET_TICKETS_ERROR:", error);
     return res.status(500).json({
@@ -924,6 +965,108 @@ async function handleInboundEmail(req, res) {
   }
 }
 
+function removeStoredFile(filePath) {
+  if (!filePath) return;
+
+  try {
+    const absolutePath = path.resolve(filePath);
+
+    if (fs.existsSync(absolutePath)) {
+      fs.unlinkSync(absolutePath);
+    }
+  } catch (error) {
+    // A missing or locked file must not block the database delete.
+    console.error("REMOVE_STORED_FILE_ERROR:", error.message);
+  }
+}
+
+async function deleteTicket(req, res) {
+  try {
+    const ticketId = Number(req.params.id);
+
+    if (!ticketId || Number.isNaN(ticketId)) {
+      return res.status(400).json({
+        message: "Invalid ticket id",
+      });
+    }
+
+    const ticket = await prisma.ticket.findUnique({
+      where: { id: ticketId },
+      include: { attachments: true },
+    });
+
+    if (!ticket) {
+      return res.status(404).json({
+        message: "Ticket not found",
+      });
+    }
+
+    for (const attachment of ticket.attachments) {
+      removeStoredFile(attachment.filePath);
+    }
+
+    // Messages and attachment rows cascade with the ticket.
+    await prisma.ticket.delete({
+      where: { id: ticketId },
+    });
+
+    return res.json({
+      message: "Ticket deleted successfully",
+    });
+  } catch (error) {
+    console.error("DELETE_TICKET_ERROR:", error);
+    return res.status(500).json({
+      message: "Server error while deleting ticket",
+    });
+  }
+}
+
+async function deleteTicketAttachment(req, res) {
+  try {
+    const ticketId = Number(req.params.id);
+    const attachmentId = Number(req.params.attachmentId);
+
+    if (
+      !ticketId ||
+      Number.isNaN(ticketId) ||
+      !attachmentId ||
+      Number.isNaN(attachmentId)
+    ) {
+      return res.status(400).json({
+        message: "Invalid attachment request",
+      });
+    }
+
+    const attachment = await prisma.ticketAttachment.findFirst({
+      where: {
+        id: attachmentId,
+        ticketId,
+      },
+    });
+
+    if (!attachment) {
+      return res.status(404).json({
+        message: "Attachment not found",
+      });
+    }
+
+    removeStoredFile(attachment.filePath);
+
+    await prisma.ticketAttachment.delete({
+      where: { id: attachment.id },
+    });
+
+    return res.json({
+      message: "Attachment deleted successfully",
+    });
+  } catch (error) {
+    console.error("DELETE_TICKET_ATTACHMENT_ERROR:", error);
+    return res.status(500).json({
+      message: "Server error while deleting attachment",
+    });
+  }
+}
+
 module.exports = {
   getTickets,
   getTicketById,
@@ -933,6 +1076,8 @@ module.exports = {
   createTicketMessage,
   createTicketAttachment,
   downloadTicketAttachment,
+  deleteTicket,
+  deleteTicketAttachment,
   sendTicketReplyEmail,
   handleInboundEmail,
 };

@@ -9,6 +9,7 @@ const {
   createLead,
   updateLead,
   convertLeadToClient,
+  deleteLead,
 } = require("./leads.controller");
 
 router.get(
@@ -51,6 +52,13 @@ router.post(
   requireAuth,
   requireRole("admin"),
   convertLeadToClient
+);
+
+router.delete(
+  "/:id",
+  requireAuth,
+  requireRole("admin"),
+  deleteLead
 );
 
 module.exports = router;

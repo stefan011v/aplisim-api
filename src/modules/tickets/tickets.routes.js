@@ -12,6 +12,8 @@ const {
   createTicketMessage,
   createTicketAttachment,
   downloadTicketAttachment,
+  deleteTicket,
+  deleteTicketAttachment,
   sendTicketReplyEmail,
   handleInboundEmail,
 } = require("./tickets.controller");
@@ -81,6 +83,20 @@ router.get(
   requireAuth,
   requireRole("admin", "staff", "viewer", "client"),
   downloadTicketAttachment
+);
+
+router.delete(
+  "/:id/attachments/:attachmentId",
+  requireAuth,
+  requireRole("admin", "staff"),
+  deleteTicketAttachment
+);
+
+router.delete(
+  "/:id",
+  requireAuth,
+  requireRole("admin"),
+  deleteTicket
 );
 
 module.exports = router;

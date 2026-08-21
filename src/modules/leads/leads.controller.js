@@ -1,4 +1,21 @@
 const prisma = require("../../config/prisma");
+const {
+  parsePagination,
+  parseSort,
+  parseEnumFilter,
+  buildSearchFilter,
+  combineWhere,
+  buildListResponse,
+} = require("../../utils/listQuery");
+
+const ALLOWED_LEAD_STATUSES = [
+  "new",
+  "contacted",
+  "qualified",
+  "proposal_sent",
+  "won",
+  "lost",
+];
 
 function normalizeText(value) {
   const text = String(value || "").trim();
@@ -24,23 +41,53 @@ function normalizeDate(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+const LEAD_SORT_FIELDS = [
+  "createdAt",
+  "updatedAt",
+  "title",
+  "status",
+  "estimatedValue",
+];
+
+const LEAD_SEARCH_FIELDS = [
+  "title",
+  "companyName",
+  "contactName",
+  "email",
+  "phone",
+  "source",
+];
+
 async function getLeads(req, res) {
   try {
-    const leads = await prisma.lead.findMany({
-      include: {
-        client: {
-          select: {
-            id: true,
-            companyName: true,
+    const pagination = parsePagination(req.query);
+
+    const where = combineWhere(
+      buildSearchFilter(req.query.q, LEAD_SEARCH_FIELDS),
+      parseEnumFilter(req.query.status, ALLOWED_LEAD_STATUSES)
+        ? { status: req.query.status }
+        : null
+    );
+
+    const [leads, total] = await Promise.all([
+      prisma.lead.findMany({
+        where,
+        skip: pagination.skip,
+        take: pagination.take,
+        include: {
+          client: {
+            select: {
+              id: true,
+              companyName: true,
+            },
           },
         },
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+        orderBy: parseSort(req.query, LEAD_SORT_FIELDS),
+      }),
+      prisma.lead.count({ where }),
+    ]);
 
-    return res.json(leads);
+    return res.json(buildListResponse(leads, total, pagination));
   } catch (error) {
     console.error("GET_LEADS_ERROR:", error);
     return res.status(500).json({
@@ -403,6 +450,41 @@ async function convertLeadToClient(req, res) {
   }
 }
 
+async function deleteLead(req, res) {
+  try {
+    const leadId = Number(req.params.id);
+
+    if (!leadId || Number.isNaN(leadId)) {
+      return res.status(400).json({
+        message: "Invalid lead id",
+      });
+    }
+
+    const lead = await prisma.lead.findUnique({
+      where: { id: leadId },
+    });
+
+    if (!lead) {
+      return res.status(404).json({
+        message: "Lead not found",
+      });
+    }
+
+    await prisma.lead.delete({
+      where: { id: leadId },
+    });
+
+    return res.json({
+      message: "Lead deleted successfully",
+    });
+  } catch (error) {
+    console.error("DELETE_LEAD_ERROR:", error);
+    return res.status(500).json({
+      message: "Server error while deleting lead",
+    });
+  }
+}
+
 module.exports = {
   getLeads,
   getLeadById,
@@ -410,4 +492,5 @@ module.exports = {
   createLead,
   updateLead,
   convertLeadToClient,
+  deleteLead,
 };
