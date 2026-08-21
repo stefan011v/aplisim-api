@@ -9,6 +9,8 @@ const clientRoutes = require("./modules/clients/clients.routes");
 const leadRoutes = require("./modules/leads/leads.routes");
 const ticketRoutes = require("./modules/tickets/tickets.routes");
 const settingsRoutes = require("./modules/settings/settings.routes");
+const userRoutes = require("./modules/users/users.routes");
+const statsRoutes = require("./modules/stats/stats.routes");
 
 const app = express();
 
@@ -56,5 +58,7 @@ app.use("/api/clients", clientRoutes);
 app.use("/api/leads", leadRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/settings", settingsRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/stats", statsRoutes);
 
 module.exports = app;
