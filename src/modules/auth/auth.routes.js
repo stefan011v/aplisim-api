@@ -1,10 +1,18 @@
 const express = require("express");
 const router = express.Router();
 
-const { login, me, logout } = require("./auth.controller");
+const {
+  login,
+  me,
+  logout,
+  forgotPassword,
+  resetPassword,
+} = require("./auth.controller");
 const { requireAuth } = require("../../middleware/auth");
 
 router.post("/login", login);
+router.post("/forgot-password", forgotPassword);
+router.post("/reset-password", resetPassword);
 router.get("/me", requireAuth, me);
 router.post("/logout", requireAuth, logout);
 

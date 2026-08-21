@@ -3,6 +3,7 @@ const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const { comparePassword } = require("../../utils/passwords");
 const { sendSupportEmail } = require("../../lib/mailer");
+const { issuePasswordToken } = require("../auth/passwordTokens");
 
 async function ensureSettings() {
   let settings = await prisma.appSetting.findUnique({
@@ -311,7 +312,9 @@ async function changeMyPassword(req, res) {
       });
     }
 
-    if (user.clientPortalRole !== "admin") {
+    // Internal staff always manage their own password; on the client portal it
+    // stays restricted to the main account admin.
+    if (user.role === "client" && user.clientPortalRole !== "admin") {
       return res.status(403).json({
         message: "Only the main client admin can change the portal password here",
       });
@@ -484,25 +487,26 @@ async function inviteMyTeamUser(req, res) {
       });
     }
 
-    const inviteToken = crypto.randomBytes(32).toString("hex");
-    const temporaryPassword = crypto.randomBytes(24).toString("hex");
-
-    const passwordHash = await bcrypt.hash(temporaryPassword, 10);
+    // The account starts with an unusable random password: the invitee sets a
+    // real one through the single-use invite link.
+    const placeholderPassword = crypto.randomBytes(32).toString("hex");
 
     const createdUser = await prisma.user.create({
       data: {
         name,
         email,
-        passwordHash,
+        passwordHash: await bcrypt.hash(placeholderPassword, 10),
         role: "client",
         clientId: currentUser.clientId,
         clientPortalRole: "member",
+        mustChangePassword: true,
       },
     });
 
-    const inviteUrl = `${
-      process.env.APP_LOGIN_URL || "https://app.aplisim.com/login"
-    }?invite=${inviteToken}&email=${encodeURIComponent(email)}`;
+    const { url: inviteUrl } = await issuePasswordToken(
+      createdUser.id,
+      "invite"
+    );
 
     await sendSupportEmail({
       to: email,
@@ -511,13 +515,10 @@ async function inviteMyTeamUser(req, res) {
 
 ${currentUser.name || "A team admin"} invited you to the APLISIM client portal for ${client.companyName}.
 
-Use this temporary password to sign in:
-${temporaryPassword}
-
-Login page:
+Set your password here (link valid for 7 days):
 ${inviteUrl}
 
-After signing in, you will have member access to the client portal.
+After setting your password you will have member access to the client portal.
 
 Best regards,
 APLISIM Support`,
@@ -525,13 +526,8 @@ APLISIM Support`,
         <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
           <p>Hello ${name},</p>
           <p><strong>${currentUser.name || "A team admin"}</strong> invited you to the APLISIM client portal for <strong>${client.companyName}</strong>.</p>
-          <p>Use this temporary password to sign in:</p>
-          <div style="margin:16px 0;padding:14px;border:1px solid #e5e7eb;border-radius:10px;background:#f9fafb;">
-            <p style="margin:0 0 8px;"><strong>Email:</strong> ${email}</p>
-            <p style="margin:0 0 8px;"><strong>Temporary password:</strong> ${temporaryPassword}</p>
-            <p style="margin:0;"><strong>Login:</strong> ${inviteUrl}</p>
-          </div>
-          <p>After signing in, you will have member access to the client portal.</p>
+          <p><a href="${inviteUrl}">Set your password</a> to activate the account. The link is valid for 7 days.</p>
+          <p style="color:#6b7280;font-size:13px;">Sign in afterwards with <strong>${email}</strong>.</p>
           <p>Best regards,<br />APLISIM Support</p>
         </div>
       `,
@@ -547,12 +543,6 @@ APLISIM Support`,
       message: "Server error while sending invite",
     });
   }
-}
-
-async function acceptTeamInvite(req, res) {
-  return res.json({
-    message: "Invite endpoint is reserved for future first-login activation flow",
-  });
 }
 
 async function deleteMyTeamUser(req, res) {
@@ -644,6 +634,5 @@ module.exports = {
   changeMyPassword,
   listMyTeamUsers,
   inviteMyTeamUser,
-  acceptTeamInvite,
   deleteMyTeamUser,
 };

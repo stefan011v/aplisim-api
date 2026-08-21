@@ -15,10 +15,27 @@ model User {
   role             String   @default("admin")
   clientId         Int?
   clientPortalRole String  @default("member")
+  mustChangePassword Boolean @default(false)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
   client Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  passwordTokens PasswordResetToken[]
+}
+
+model PasswordResetToken {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  tokenHash String    @unique
+  purpose   String    @default("reset")
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model Client {

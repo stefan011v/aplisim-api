@@ -9,7 +9,6 @@ const {
   changeMyPassword,
   listMyTeamUsers,
   inviteMyTeamUser,
-  acceptTeamInvite,
   deleteMyTeamUser,
 } = require("./settings.controller");
 const {
@@ -23,12 +22,7 @@ router.patch("/", requireAuth, requireAdmin, updateSettings);
 
 router.get("/me", requireAuth, requireRole("client"), getMySettings);
 router.patch("/me", requireAuth, requireRole("client"), updateMySettings);
-router.patch(
-  "/change-password",
-  requireAuth,
-  requireRole("client"),
-  changeMyPassword
-);
+router.patch("/change-password", requireAuth, changeMyPassword);
 
 router.get("/team-users", requireAuth, requireRole("client"), listMyTeamUsers);
 router.post(
@@ -37,7 +31,6 @@ router.post(
   requireRole("client"),
   inviteMyTeamUser
 );
-router.post("/team-users/accept-invite", acceptTeamInvite);
 router.delete(
   "/team-users/:userId",
   requireAuth,
