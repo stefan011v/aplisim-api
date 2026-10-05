@@ -11,6 +11,7 @@ const ticketRoutes = require("./modules/tickets/tickets.routes");
 const settingsRoutes = require("./modules/settings/settings.routes");
 const userRoutes = require("./modules/users/users.routes");
 const statsRoutes = require("./modules/stats/stats.routes");
+const publicRoutes = require("./modules/public/public.routes");
 
 const app = express();
 
@@ -60,5 +61,6 @@ app.use("/api/tickets", ticketRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/stats", statsRoutes);
+app.use("/api/public", publicRoutes);
 
 module.exports = app;
